@@ -718,6 +718,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         ble.delegate = self
         if let strs = prefs.stringArray(forKey: "devices") {
             let uuids = strs.compactMap { UUID(uuidString: $0) }
+            for uuid in uuids {
+                if ble.devices[uuid] == nil {
+                    ble.devices[uuid] = Device(uuid: uuid)
+                }
+            }
             monitorDevices(uuids: uuids)
         }
         let lockRSSI = prefs.integer(forKey: "lockRSSI")
