@@ -26,7 +26,7 @@ func getNameFromMAC(_ mac: String) -> String? {
     return nil
 }
 
-class Device: NSObject {
+class Device: NSObject, Codable {
     let uuid : UUID!
     var peripheral : CBPeripheral?
     var manufacture : String?
@@ -115,6 +115,15 @@ class Device: NSObject {
 
     init(uuid _uuid: UUID) {
         uuid = _uuid
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case uuid
+        case manufacture
+        case model
+        case rssi
+        case macAddr
+        case blName
     }
 }
 
