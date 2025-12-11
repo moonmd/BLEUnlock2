@@ -1,4 +1,4 @@
-# BLEUnlock
+# BLEUnlock2 - forked for 2 devices
 
 ## Please note that I don't distribute this app on the Mac App Store. You can find it here for free! 
 
