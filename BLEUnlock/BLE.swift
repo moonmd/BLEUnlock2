@@ -144,6 +144,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var delegate: BLEDelegate?
     var scanMode = false
     var monitoredUUIDs: [UUID] = []
+    var removedUUIDs: [UUID] = []
     var monitoredPeripherals: [UUID: CBPeripheral] = [:]
     var proximityTimer : Timer?
     var signalTimers: [UUID: Timer] = [:]
@@ -362,6 +363,9 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
 
         if (scanMode) {
+            if removedUUIDs.contains(peripheral.identifier) {
+                return
+            }
             if let uuids = advertisementData["kCBAdvDataServiceUUIDs"] as? [CBUUID] {
                 for uuid in uuids {
                     if uuid == ExposureNotification {
@@ -499,6 +503,9 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     override init() {
         super.init()
+        if let removed = UserDefaults.standard.stringArray(forKey: "removedDevices") {
+            removedUUIDs = removed.compactMap { UUID(uuidString: $0) }
+        }
         centralMgr = CBCentralManager(delegate: self, queue: nil)
     }
 }

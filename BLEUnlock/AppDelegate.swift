@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     let unlockRSSIMenu = NSMenu()
     let timeoutMenu = NSMenu()
     let lockDelayMenu = NSMenu()
-    var deviceDict: [UUID: NSMenuItem] = [:]
+    var deviceDict: [UUID: (parent: NSMenuItem, select: NSMenuItem)] = [:]
     var monitorMenuItems: [UUID: NSMenuItem] = [:]
     var placeholderMonitorItem: NSMenuItem?
     let prefs = UserDefaults.standard
@@ -105,25 +105,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         if ble.monitoredUUIDs.contains(device.uuid) {
             selectItem.state = .on
         }
-        deviceDict[device.uuid] = selectItem
+        deviceDict[device.uuid] = (parent: menuItem, select: selectItem)
 
         let removeItem = subMenu.addItem(withTitle: t("Remove"), action: #selector(removeDeviceAction), keyEquivalent: "")
         removeItem.representedObject = device.uuid
     }
     
     func updateDevice(device: Device) {
-        if let selectMenuItem = deviceDict[device.uuid] {
-            if let parentMenuItem = selectMenuItem.parent?.enclosingMenuItem {
-                parentMenuItem.title = menuItemTitle(device: device)
-            }
+        if let items = deviceDict[device.uuid] {
+            items.parent.title = menuItemTitle(device: device)
         }
     }
     
     func removeDevice(device: Device) {
-        if let selectMenuItem = deviceDict[device.uuid] {
-            if let parentMenuItem = selectMenuItem.parent?.enclosingMenuItem {
-                parentMenuItem.menu?.removeItem(parentMenuItem)
-            }
+        if let items = deviceDict[device.uuid] {
+            items.parent.menu?.removeItem(items.parent)
         }
         deviceDict.removeValue(forKey: device.uuid)
     }
@@ -403,6 +399,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
         ble.devices.removeValue(forKey: uuid)
 
+        if !ble.removedUUIDs.contains(uuid) {
+            ble.removedUUIDs.append(uuid)
+            let removedUUIDStrings = ble.removedUUIDs.map { $0.uuidString }
+            prefs.set(removedUUIDStrings, forKey: "removedDevices")
+        }
+
         monitorDevices(uuids: monitored)
     }
 
@@ -414,8 +416,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
 
         var newUUIDs: [UUID] = []
-        for (uuid, menuItem) in deviceDict {
-            if menuItem.state == .on {
+        for (uuid, items) in deviceDict {
+            if items.select.state == .on {
                 newUUIDs.append(uuid)
             }
         }
