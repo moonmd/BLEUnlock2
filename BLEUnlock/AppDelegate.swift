@@ -88,7 +88,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         var desc : String!
         if let mac = device.macAddr {
             let prettifiedMac = mac.replacingOccurrences(of: "-", with: ":").uppercased()
-            desc = String(format: "%@ (%@)", device.description, prettifiedMac)
+            desc = String(format: "%@ - %@", device.description, prettifiedMac)
         } else {
             desc = device.description
         }
@@ -380,8 +380,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         if item.state == .on {
             item.state = .off
         } else {
-            if ble.monitoredUUIDs.count >= 2 {
-                // do nothing to prevent selecting more than 2
+            let selectedCount = deviceDict.values.filter { $0.state == .on }.count
+            if selectedCount >= 2 {
                 return
             }
             item.state = .on
