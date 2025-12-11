@@ -17,11 +17,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     let timeoutMenu = NSMenu()
     let lockDelayMenu = NSMenu()
     var deviceDict: [UUID: NSMenuItem] = [:]
-    var monitorMenuItem : NSMenuItem?
+    var monitorMenuItems: [NSMenuItem] = []
     let prefs = UserDefaults.standard
     var displaySleep = false
     var systemSleep = false
-    var connected = false
+    var connected: [UUID: Bool] = [:]
     var userNotification: NSUserNotification?
     var nowPlayingWasPlaying = false
     var aboutBox: AboutBox? = nil
@@ -29,7 +29,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     var manualLock = false
     var unlockedAt = 0.0
     var inScreensaver = false
-    var lastRSSI: Int? = nil
+    var lastRSSI: [UUID: Int] = [:]
 
     func menuWillOpen(_ menu: NSMenu) {
         if menu == deviceMenu {
@@ -98,7 +98,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     func newDevice(device: Device) {
         let menuItem = deviceMenu.addItem(withTitle: menuItemTitle(device: device), action:#selector(selectDevice), keyEquivalent: "")
         deviceDict[device.uuid] = menuItem
-        if (device.uuid == ble.monitoredUUID) {
+        if ble.monitoredUUIDs.contains(device.uuid) {
             menuItem.state = .on
         }
     }
@@ -116,20 +116,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         deviceDict.removeValue(forKey: device.uuid)
     }
 
-    func updateRSSI(rssi: Int?, active: Bool) {
+    func updateRSSI(uuid: UUID, rssi: Int?, active: Bool) {
+        guard let index = ble.monitoredUUIDs.firstIndex(of: uuid) else {
+            return
+        }
+
+        let deviceName = ble.devices[uuid]?.description ?? ""
+
         if let r = rssi {
-            lastRSSI = r
-            monitorMenuItem?.title = String(format:"%ddBm", r) + (active ? " (Active)" : "")
-            if (!connected) {
-                connected = true
-                statusItem.button?.image = NSImage(named: "StatusBarConnected")
+            lastRSSI[uuid] = r
+            if index < monitorMenuItems.count {
+                monitorMenuItems[index].title = String(format:"%@: %ddBm", deviceName, r) + (active ? " (Active)" : "")
             }
+            connected[uuid] = true
         } else {
-            monitorMenuItem?.title = t("not_detected")
-            if (connected) {
-                connected = false
-                statusItem.button?.image = NSImage(named: "StatusBarDisconnected")
+            lastRSSI.removeValue(forKey: uuid)
+            if index < monitorMenuItems.count {
+                monitorMenuItems[index].title = String(format:"%@: %@", deviceName, t("not_detected"))
             }
+            connected[uuid] = false
+        }
+
+        if connected.values.contains(true) {
+            statusItem.button?.image = NSImage(named: "StatusBarConnected")
+        } else {
+            statusItem.button?.image = NSImage(named: "StatusBarDisconnected")
         }
     }
 
@@ -169,7 +180,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         let file = directory.appendingPathComponent("event")
         let process = Process()
         process.executableURL = file
-        if let r = lastRSSI {
+        if let r = lastRSSI.values.max() {
             process.arguments = [arg, String(r)]
         } else {
             process.arguments = [arg]
@@ -366,22 +377,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     @objc func selectDevice(item: NSMenuItem) {
+        if item.state == .on {
+            item.state = .off
+        } else {
+            if ble.monitoredUUIDs.count >= 2 {
+                // do nothing to prevent selecting more than 2
+                return
+            }
+            item.state = .on
+        }
+
+        var newUUIDs: [UUID] = []
         for (uuid, menuItem) in deviceDict {
-            if menuItem == item {
-                monitorDevice(uuid: uuid)
-                prefs.set(uuid.uuidString, forKey: "device")
-                menuItem.state = .on
-            } else {
-                menuItem.state = .off
+            if menuItem.state == .on {
+                newUUIDs.append(uuid)
             }
         }
+
+        let uuidStrings = newUUIDs.map { $0.uuidString }
+        prefs.set(uuidStrings, forKey: "devices")
+
+        monitorDevices(uuids: newUUIDs)
     }
 
-    func monitorDevice(uuid: UUID) {
-        connected = false
-        statusItem.button?.image = NSImage(named: "StatusBarDisconnected")
-        monitorMenuItem?.title = t("not_detected")
-        ble.startMonitor(uuid: uuid)
+    func monitorDevices(uuids: [UUID]) {
+        ble.startMonitor(uuids: uuids)
+
+        for i in 0 ..< monitorMenuItems.count {
+            if i < uuids.count {
+                let uuid = uuids[i]
+                let deviceName = ble.devices[uuid]?.description ?? ""
+                monitorMenuItems[i].title = String(format:"%@: %@", deviceName, t("not_detected"))
+            } else {
+                monitorMenuItems[i].title = t("device_not_set")
+            }
+        }
+
+        connected.removeAll()
+        if !uuids.isEmpty {
+            statusItem.button?.image = NSImage(named: "StatusBarDisconnected")
+        }
     }
 
     func errorModal(_ msg: String, info: String? = nil) {
@@ -574,7 +609,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
     
     func constructMenu() {
-        monitorMenuItem = mainMenu.addItem(withTitle: t("device_not_set"), action: nil, keyEquivalent: "")
+        let monitorMenuItem1 = mainMenu.addItem(withTitle: t("device_not_set"), action: nil, keyEquivalent: "")
+        let monitorMenuItem2 = mainMenu.addItem(withTitle: t("device_not_set"), action: nil, keyEquivalent: "")
+        monitorMenuItems = [monitorMenuItem1, monitorMenuItem2]
         
         var item: NSMenuItem
 
@@ -679,10 +716,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             constructMenu()
         }
         ble.delegate = self
-        if let str = prefs.string(forKey: "device") {
-            if let uuid = UUID(uuidString: str) {
-                monitorDevice(uuid: uuid)
-            }
+        if let strs = prefs.stringArray(forKey: "devices") {
+            let uuids = strs.compactMap { UUID(uuidString: $0) }
+            monitorDevices(uuids: uuids)
         }
         let lockRSSI = prefs.integer(forKey: "lockRSSI")
         if lockRSSI != 0 {
