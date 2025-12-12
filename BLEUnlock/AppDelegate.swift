@@ -126,7 +126,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             removeItem.title = device.description
         }
         if let monitorItem = monitorMenuItems[device.uuid] {
-            monitorItem.title = statusLineTitle(for: device, rssi: lastRSSI[device.uuid])
+            monitorItem.title = statusLineTitle(for: device, rssi: device.rssi)
+            lastRSSI[device.uuid] = device.rssi
         }
     }
 
@@ -766,14 +767,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             constructMenu()
         }
         ble.delegate = self
-        if let data = prefs.object(forKey: "devices") as? Data {
-            if let devices = try? PropertyListDecoder().decode([Device].self, from: data) {
-                let uuids = devices.map { $0.uuid! }
-                for device in devices {
-                    ble.devices[device.uuid] = device
-                }
-                monitorDevices(uuids: uuids)
+        if let data = prefs.object(forKey: "devices") as? Data,
+           let devices = try? PropertyListDecoder().decode([Device].self, from: data) {
+            let uuids = devices.map { $0.uuid }
+            for device in devices {
+                ble.devices[device.uuid] = device
             }
+            monitorDevices(uuids: uuids)
+        } else if let savedUUIDs = prefs.stringArray(forKey: "devices") {
+            // Data migration from old format
+            let devices = savedUUIDs.map { uuidString -> Device in
+                let uuid = UUID(uuidString: uuidString)!
+                return Device(uuid: uuid)
+            }
+            if let encoded = try? PropertyListEncoder().encode(devices) {
+                prefs.set(encoded, forKey: "devices")
+            }
+            let uuids = devices.map { $0.uuid }
+            for device in devices {
+                ble.devices[device.uuid] = device
+            }
+            monitorDevices(uuids: uuids)
         }
         let lockRSSI = prefs.integer(forKey: "lockRSSI")
         if lockRSSI != 0 {
