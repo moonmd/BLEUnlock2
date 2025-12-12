@@ -16,7 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     let unlockRSSIMenu = NSMenu()
     let timeoutMenu = NSMenu()
     let lockDelayMenu = NSMenu()
-    var deviceDict: [UUID: (parent: NSMenuItem, select: NSMenuItem)] = [:]
+    let removeMenu = NSMenu()
+    var deviceDict: [UUID: NSMenuItem] = [:]
+    var removeDeviceDict: [UUID: NSMenuItem] = [:]
     var monitorMenuItems: [UUID: NSMenuItem] = [:]
     var placeholderMonitorItem: NSMenuItem?
     let prefs = UserDefaults.standard
@@ -97,31 +99,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
     
     func newDevice(device: Device) {
-        let menuItem = deviceMenu.addItem(withTitle: menuItemTitle(device: device), action: nil, keyEquivalent: "")
-        let subMenu = NSMenu()
-        menuItem.submenu = subMenu
-
-        let selectItem = subMenu.addItem(withTitle: t("Select"), action: #selector(selectDevice), keyEquivalent: "")
+        let menuItem = deviceMenu.addItem(withTitle: menuItemTitle(device: device), action:#selector(selectDevice), keyEquivalent: "")
+        deviceDict[device.uuid] = menuItem
         if ble.monitoredUUIDs.contains(device.uuid) {
-            selectItem.state = .on
+            menuItem.state = .on
         }
-        deviceDict[device.uuid] = (parent: menuItem, select: selectItem)
-
-        let removeItem = subMenu.addItem(withTitle: t("Remove"), action: #selector(removeDeviceAction), keyEquivalent: "")
+        let removeItem = removeMenu.addItem(withTitle: device.description, action: #selector(removeDeviceAction), keyEquivalent: "")
         removeItem.representedObject = device.uuid
+        removeDeviceDict[device.uuid] = removeItem
     }
-    
+
     func updateDevice(device: Device) {
-        if let items = deviceDict[device.uuid] {
-            items.parent.title = menuItemTitle(device: device)
+        if let menuItem = deviceDict[device.uuid] {
+            menuItem.title = menuItemTitle(device: device)
+        }
+        if let removeItem = removeDeviceDict[device.uuid] {
+            removeItem.title = device.description
         }
     }
-    
+
     func removeDevice(device: Device) {
-        if let items = deviceDict[device.uuid] {
-            items.parent.menu?.removeItem(items.parent)
+        if let menuItem = deviceDict[device.uuid] {
+            menuItem.menu?.removeItem(menuItem)
         }
         deviceDict.removeValue(forKey: device.uuid)
+        if let removeItem = removeDeviceDict[device.uuid] {
+            removeItem.menu?.removeItem(removeItem)
+        }
+        removeDeviceDict.removeValue(forKey: device.uuid)
     }
 
     func updateRSSI(uuid: UUID, rssi: Int?, active: Bool) {
@@ -416,8 +421,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
 
         var newUUIDs: [UUID] = []
-        for (uuid, items) in deviceDict {
-            if items.select.state == .on {
+        for (uuid, menuItem) in deviceDict {
+            if menuItem.state == .on {
                 newUUIDs.append(uuid)
             }
         }
@@ -657,6 +662,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         item.submenu = deviceMenu
         deviceMenu.delegate = self
         deviceMenu.addItem(withTitle: t("scanning"), action: nil, keyEquivalent: "")
+
+        let removeItem = mainMenu.addItem(withTitle: t("Remove Device"), action: nil, keyEquivalent: "")
+        removeItem.submenu = removeMenu
 
         let unlockRSSIItem = mainMenu.addItem(withTitle: t("unlock_rssi"), action: nil, keyEquivalent: "")
         unlockRSSIItem.submenu = unlockRSSIMenu
