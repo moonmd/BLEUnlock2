@@ -104,9 +104,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         if ble.monitoredUUIDs.contains(device.uuid) {
             menuItem.state = .on
         }
-        let removeItem = removeMenu.addItem(withTitle: device.description, action: #selector(removeDeviceAction), keyEquivalent: "")
-        removeItem.representedObject = device.uuid
-        removeDeviceDict[device.uuid] = removeItem
     }
 
     func updateDevice(device: Device) {
@@ -123,10 +120,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             menuItem.menu?.removeItem(menuItem)
         }
         deviceDict.removeValue(forKey: device.uuid)
-        if let removeItem = removeDeviceDict[device.uuid] {
-            removeItem.menu?.removeItem(removeItem)
-        }
-        removeDeviceDict.removeValue(forKey: device.uuid)
     }
 
     func updateRSSI(uuid: UUID, rssi: Int?, active: Bool) {
@@ -443,6 +436,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
         monitorMenuItems.removeAll()
 
+        removeMenu.removeAllItems()
+        removeDeviceDict.removeAll()
+
         if uuids.isEmpty {
             placeholderMonitorItem?.isHidden = false
         } else {
@@ -452,6 +448,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                 let title = String(format:"%@: %@", deviceName, t("not_detected"))
                 let newItem = mainMenu.insertItem(withTitle: title, action: nil, keyEquivalent: "", at: monitorMenuItems.count)
                 monitorMenuItems[uuid] = newItem
+
+                let removeItem = removeMenu.addItem(withTitle: deviceName, action: #selector(removeDeviceAction), keyEquivalent: "")
+                removeItem.representedObject = uuid
+                removeDeviceDict[uuid] = removeItem
             }
         }
 
