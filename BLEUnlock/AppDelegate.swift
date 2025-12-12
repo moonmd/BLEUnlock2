@@ -98,6 +98,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         return String(format: "%@ (%ddBm)", desc, device.rssi)
     }
     
+    func statusLineTitle(for device: Device, rssi: Int? = nil) -> String {
+        var title = device.description
+        title += " " + device.uuid.uuidString
+
+        if let r = rssi {
+            title += String(format:" (%ddBm)", r)
+        } else {
+            title += " (" + t("not_detected") + ")"
+        }
+        return title
+    }
+
     func newDevice(device: Device) {
         let menuItem = deviceMenu.addItem(withTitle: menuItemTitle(device: device), action:#selector(selectDevice), keyEquivalent: "")
         deviceDict[device.uuid] = menuItem
@@ -113,6 +125,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         if let removeItem = removeDeviceDict[device.uuid] {
             removeItem.title = device.description
         }
+        if let monitorItem = monitorMenuItems[device.uuid] {
+            monitorItem.title = statusLineTitle(for: device, rssi: lastRSSI[device.uuid])
+        }
     }
 
     func removeDevice(device: Device) {
@@ -123,21 +138,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     func updateRSSI(uuid: UUID, rssi: Int?, active: Bool) {
-        guard let menuItem = monitorMenuItems[uuid] else {
+        guard let menuItem = monitorMenuItems[uuid], let device = ble.devices[uuid] else {
             return
         }
 
-        let deviceName = ble.devices[uuid]?.description ?? ""
-
-        if let r = rssi {
-            lastRSSI[uuid] = r
-            menuItem.title = String(format:"%@: %ddBm", deviceName, r) + (active ? " (Active)" : "")
-            connected[uuid] = true
-        } else {
-            lastRSSI.removeValue(forKey: uuid)
-            menuItem.title = String(format:"%@: %@", deviceName, t("not_detected"))
-            connected[uuid] = false
-        }
+        lastRSSI[uuid] = rssi
+        menuItem.title = statusLineTitle(for: device, rssi: rssi) + (active ? " (Active)" : "")
+        connected[uuid] = rssi != nil
 
         if connected.values.contains(true) {
             statusItem.button?.image = NSImage(named: "StatusBarConnected")
@@ -444,12 +451,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         } else {
             placeholderMonitorItem?.isHidden = true
             for uuid in uuids {
-                let deviceName = ble.devices[uuid]?.description ?? ""
-                let title = String(format:"%@: %@", deviceName, t("not_detected"))
+                guard let device = ble.devices[uuid] else { continue }
+                let title = statusLineTitle(for: device)
                 let newItem = mainMenu.insertItem(withTitle: title, action: nil, keyEquivalent: "", at: monitorMenuItems.count)
                 monitorMenuItems[uuid] = newItem
 
-                let removeItem = removeMenu.addItem(withTitle: deviceName, action: #selector(removeDeviceAction), keyEquivalent: "")
+                let removeItem = removeMenu.addItem(withTitle: device.description, action: #selector(removeDeviceAction), keyEquivalent: "")
                 removeItem.representedObject = uuid
                 removeDeviceDict[uuid] = removeItem
             }
