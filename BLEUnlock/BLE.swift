@@ -26,7 +26,7 @@ func getNameFromMAC(_ mac: String) -> String? {
     return nil
 }
 
-class Device: NSObject {
+class Device: NSObject, Codable {
     let uuid : UUID!
     var peripheral : CBPeripheral?
     var manufacture : String?
@@ -52,31 +52,46 @@ class Device: NSObject {
                 if blName == nil {
                     blName = getNameFromMAC(mac)
                 }
-                if let name = blName {
-                    // If it's just "iPhone" or "iPad", there's a chance we can get the model name in the following code
-                    if name != "iPhone" && name != "iPad" {
-                        return name
-                    }
-                }
             }
+
+            var modelName: String?
             if let manu = manufacture {
                 if let mod = model {
                     if manu == "Apple Inc." && appleDeviceNames[mod] != nil {
-                        return appleDeviceNames[mod]!
+                        modelName = appleDeviceNames[mod]!
+                    } else {
+                        modelName = String(format: "%@/%@", manu, mod)
                     }
-                    return String(format: "%@/%@", manu, mod)
                 } else {
-                    return manu
+                    modelName = manu
                 }
+            } else if let mod = model {
+                modelName = mod
             }
+
+            if let name = blName {
+                if let model = modelName {
+                    if name.contains(model) {
+                        return name
+                    }
+                    if model.contains(name) {
+                        return model
+                    }
+                    return "\(name) - \(model)"
+                }
+                return name
+            }
+
+            if let model = modelName {
+                return model
+            }
+
             if let name = peripheral?.name {
                 if name.trimmingCharacters(in: .whitespaces).count != 0 {
                     return name
                 }
             }
-            if let mod = model {
-                return mod
-            }
+
             // iBeacon
             if let adv = advData {
                 if adv.count >= 25 {
@@ -91,9 +106,6 @@ class Device: NSObject {
                     }
                 }
             }
-            if let name = blName {
-                return name
-            }
             if let mac = macAddr {
                 return mac // better than uuid
             }
@@ -103,6 +115,15 @@ class Device: NSObject {
 
     init(uuid _uuid: UUID) {
         uuid = _uuid
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case uuid
+        case manufacture
+        case model
+        case rssi
+        case macAddr
+        case blName
     }
 }
 
@@ -123,6 +144,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var delegate: BLEDelegate?
     var scanMode = false
     var monitoredUUIDs: [UUID] = []
+    var removedUUIDs: [UUID] = []
     var monitoredPeripherals: [UUID: CBPeripheral] = [:]
     var proximityTimer : Timer?
     var signalTimers: [UUID: Timer] = [:]
@@ -341,6 +363,9 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
 
         if (scanMode) {
+            if removedUUIDs.contains(peripheral.identifier) {
+                return
+            }
             if let uuids = advertisementData["kCBAdvDataServiceUUIDs"] as? [CBUUID] {
                 for uuid in uuids {
                     if uuid == ExposureNotification {
@@ -478,6 +503,9 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     override init() {
         super.init()
+        if let removed = UserDefaults.standard.stringArray(forKey: "removedDevices") {
+            removedUUIDs = removed.compactMap { UUID(uuidString: $0) }
+        }
         centralMgr = CBCentralManager(delegate: self, queue: nil)
     }
 }
